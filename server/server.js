@@ -9,6 +9,7 @@ import cors from "cors";
 import admin from "firebase-admin";
 import serviceAccountKey from "./mycodehome-mern-blog-firebase-adminsdk-bzef7-2efaa80449.json" assert { type: "json" };
 import { getAuth } from "firebase-admin/auth";
+import aws from 'aws-sdk';
 
 const server = express();
 let PORT = process.env.PORT || 3000;
@@ -27,6 +28,32 @@ server.use(cors());
 mongoose.connect(process.env.DB_LOCATION, {
   autoIndex: true,
 });
+
+
+
+
+// Setting up S3 Bucket
+const s3 = new aws.S3({
+  region: 'ap-south-1',
+  accessKeyId: process.env.AWS_ACCESS_KEY,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+})
+
+const generateUploadURL = async () => {
+    const date = new Date();
+    const imageName = `${nanoid()}-${date.getTime()}.jpeg`;
+    
+    return await s3.getSignedUrlPromise('putObject', {
+      Bucket: 'mycodehome-blog',
+      Key: imageName,
+      Expires: 1000,
+      ContentType: 'image/jpeg'
+    })
+}
+
+
+
+
 
 const formateDatatoSend = (user) => {
   const access_token = jwt.sign(
@@ -54,6 +81,23 @@ const generateUsername = async (email) => {
 
   return username;
 };
+
+
+// upload iamge url route
+
+server.get('/get-upload-url', (req, res) => {
+  generateUploadURL().then(url => res.status(200).json({uploadURL: url}))
+  .catch(err => {
+    console.log(err.message);
+    return res.status(500).json({error: err.message })
+  })
+})
+
+
+
+
+
+
 
 server.post("/signup", (req, res) => {
   let { fullname, email, password } = req.body;
@@ -136,113 +180,113 @@ server.post("/signin", (req, res) => {
     });
 });
 
-// server.post("/google-auth", async (req, res) => {
-//   let { access_token } = req.body;
-
-//   getAuth()
-//     .verifyIdToken(access_token)
-//     .then(async (decodedUser) => {
-//       let { email, name, picture } = decodedUser;
-
-//       picture = picture.replace("s96-c", "s384-c");
-
-//       let user = await User.findOne({ "personal_info.email": email })
-//         .select(
-//           "personal_info.fullname personal_info.username personal_info.profile.img personal_info.google.auth"
-//         )
-//         .then((u) => {
-//           return u || null;
-//         })
-//         .catch((err) => {
-//           return res.status(500).json({ error: err.message });
-//         });
-
-//       if (user) {
-//         if (!user.goole_auth) {
-//           return res.status(403).json({
-//             error:
-//               "This email was signed up without google. Please log in with email and password to access the account",
-//           });
-//         } else {
-//           return res.status(200).json(formateDatatoSend(user));
-//         }
-//       } else {
-//         let username = await generateUsername(email);
-
-//         user = new User({
-//           personal_info: {
-//             fullname: name,
-//             email,
-//             profile_img: picture,
-//             username,
-//           },
-//           google_auth: true,
-//         });
-
-//         await user
-//           .save()
-//           .then((u) => {
-//             user = u;
-//           })
-//           .catch((err) => {
-//             return res.status(500).json({ error: err.message });
-//           });
-//       }
-//       return res.status(200).json(formateDatatoSend(user));
-//     })
-//     .catch((err) => {
-//       return res.status(500).json({
-//         error:
-//           "Failed to authenticate you with google. Try with some other google account",
-//       });
-//     });
-// });
-
-
 server.post("/google-auth", async (req, res) => {
-  try {
-    const { access_token } = req.body;
+  let { access_token } = req.body;
 
-    const decodedUser = await getAuth().verifyIdToken(access_token);
-    const { email, name, picture } = decodedUser;
+     getAuth()
+    .verifyIdToken(access_token)
+    .then(async (decodedUser) => {
+      let { email, name, picture } = decodedUser;
 
-    // Try to find the user by email
-    let user = await User.findOne({ "personal_info.email": email });
+      picture = picture.replace("s96-c", "s384-c");
 
-    if (user) {
-      // User found, log them in
-      if (!user.google_auth) {
-        return res.status(403).json({
-          error:
-            "This email was signed up without Google. Please log in with email and password to access the account.",
+      let user = await User.findOne({ "personal_info.email": email })
+        .select(
+          "personal_info.fullname personal_info.username personal_info.profile_img personal_info.google_auth"
+        )
+        .then((u) => {
+          return u || null;
+        })
+        .catch((err) => {
+          return res.status(500).json({ error: err.message });
         });
+
+      if (user) {    // login
+        if (!user.goole_auth) {
+          return res.status(403).json({
+            error:
+              "This email was signed up without google. Please log in with email and password to access the account",
+          });
+        } else {
+          return res.status(200).json(formateDatatoSend(user));
+        }
       } else {
-        return res.status(200).json(formateDatatoSend(user));
+        let username = await generateUsername(email);
+
+        user = new User({
+          personal_info: {
+            fullname: name,
+            email,
+            profile_img: picture,
+            username,
+          },
+          google_auth: true,
+        });
+
+        await user
+          .save()
+          .then((u) => {
+            user = u;
+          })
+          .catch((err) => {
+            return res.status(500).json({ error: err.message });
+          });
       }
-    } else {
-      // User not found, create a new user with Google authentication
-      const username = await generateUsername(email);
-
-      user = new User({
-        personal_info: {
-          fullname: name,
-          email,
-          profile_img: picture,
-          username,
-        },
-        google_auth: true,
-      });
-
-      await user.save();
       return res.status(200).json(formateDatatoSend(user));
-    }
-  } catch (err) {
-    return res.status(500).json({
-      error:
-        "Failed to authenticate you with Google. Try with some other Google account",
+    })
+    .catch((err) => {
+      return res.status(500).json({
+        error:
+          "Failed to authenticate you with google. Try with some other google account",
+      });
     });
-  }
 });
+
+
+// server.post("/google-auth", async (req, res) => {
+//   try {
+//     const { access_token } = req.body;
+
+//     const decodedUser = await getAuth().verifyIdToken(access_token);
+//     const { email, name, picture } = decodedUser;
+
+//     // Try to find the user by email
+//     let user = await User.findOne({ "personal_info.email": email });
+
+//     if (user) {
+//       // User found, log them in
+//       if (!user.google_auth) {
+//         return res.status(403).json({
+//           error:
+//             "This email was signed up without Google. Please log in with email and password to access the account.",
+//         });
+//       } else {
+//         return res.status(200).json(formateDatatoSend(user));
+//       }
+//     } else {
+//       // User not found, create a new user with Google authentication
+//       const username = await generateUsername(email);
+
+//       user = new User({
+//         personal_info: {
+//           fullname: name,
+//           email,
+//           profile_img: picture,
+//           username,
+//         },
+//         google_auth: true,
+//       });
+
+//       await user.save();
+//       return res.status(200).json(formateDatatoSend(user));
+//     }
+//   } catch (err) {
+//     return res.status(500).json({
+//       error:
+//         "Failed to authenticate you with Google. Try with some other Google account",
+//     });
+//   }
+// });
 
 
 

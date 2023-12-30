@@ -10,14 +10,9 @@ import { UserContext } from "../App";
 import { authWithGoogle } from "../common/firebase";
 
 const UserAuthForm = ({ type }) => {
-  
-  let {
-    userAuth = {},
-    setUserAuth,
-  } = useContext(UserContext);
-  
+  let { userAuth = {}, setUserAuth } = useContext(UserContext);
+
   let { access_token } = userAuth;
-  
 
   console.log(access_token);
 
@@ -74,34 +69,28 @@ const UserAuthForm = ({ type }) => {
     }
 
     userAuthThroughServer(serverRoute, formData);
-
-
   };
-  
+
   const handleGoogleAuth = (e) => {
     e.preventDefault();
-    authWithGoogle().then(user => {
-      let serverRoute = "/google-auth";
+    authWithGoogle()
+      .then((user) => {
+        let serverRoute = "/google-auth";
 
-      let formData = {
-        access_token: user.accessToken
+        let formData = {
+          access_token: user.accessToken,
+        };
 
-      }
-
-      userAuthThroughServer(serverRoute, formData)
-
-
-    })
-    .catch(err => {
-      toast.error("trouble to login through google! ")
-      return console.log(err)
-    })
-  } 
-  return (
-
-    access_token ? 
+        userAuthThroughServer(serverRoute, formData);
+      })
+      .catch((err) => {
+        toast.error("trouble to login through google! ");
+        return console.log(err);
+      });
+  };
+  return access_token ? (
     <Navigate to="/" />
-    :
+  ) : (
     <AnimationWraper keyValue={type}>
       <section className="h-cover flex items-center justify-center ">
         <Toaster />
@@ -149,8 +138,9 @@ const UserAuthForm = ({ type }) => {
             <hr className="w-2/3 border-black" />
           </div>
 
-          <button className="btn-dark flex items-center gap-4 w-[90%] justify-center bg-center m-auto" 
-          onClick={ handleGoogleAuth }
+          <button
+            className="btn-dark flex items-center gap-4 w-[90%] justify-center bg-center m-auto"
+            onClick={handleGoogleAuth}
           >
             <img className="w-5" src={googleIcon} alt="" />
             continue with google
